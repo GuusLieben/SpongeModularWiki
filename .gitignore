@@ -1,0 +1,7 @@
+﻿.gradle
+build
+gradle
+ModularWiki.iml
+ModularWiki.ipr
+*.iws
+*.iml
