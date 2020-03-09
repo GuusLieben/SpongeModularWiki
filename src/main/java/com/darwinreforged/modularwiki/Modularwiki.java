@@ -3,6 +3,12 @@ package com.darwinreforged.modularwiki;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
 import com.google.inject.Inject;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.command.CommandException;
@@ -14,23 +20,15 @@ import org.spongepowered.api.command.spec.CommandExecutor;
 import org.spongepowered.api.command.spec.CommandSpec;
 import org.spongepowered.api.config.ConfigDir;
 import org.spongepowered.api.entity.living.player.Player;
-import org.spongepowered.api.event.game.state.GameStartedServerEvent;
 import org.spongepowered.api.event.Listener;
+import org.spongepowered.api.event.game.state.GameStartedServerEvent;
 import org.spongepowered.api.plugin.Plugin;
 import org.spongepowered.api.text.Text;
 import org.spongepowered.api.text.action.TextActions;
 import org.spongepowered.api.text.format.TextColors;
 import org.spongepowered.api.text.format.TextStyles;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Optional;
-
-@Plugin(
+@Plugin (
         id = "modularwiki",
         name = "Modular Wiki",
         description = "Configuration based wiki plugin for Darwin Reforged",
@@ -40,134 +38,192 @@ import java.util.Optional;
 )
 public class Modularwiki implements CommandExecutor {
 
-    @Inject
-    private Logger logger;
+   @Inject
+   private Logger logger;
 
-    @Inject
-    @ConfigDir(sharedRoot = false)
-    private Path root;
+   @Inject
+   @ConfigDir (sharedRoot = false)
+   private Path root;
 
-    public static WikiObject[] wikiObjects;
+   public static WikiObject[] wikiObjects;
 
-    private CommandSpec wikiCommandSpec = CommandSpec.builder()
-            .permission("modwiki.use")
-            .executor(new WikiCommand())
-            .arguments(GenericArguments.optional(GenericArguments.string(Text.of("entry"))))
-            .build();
+   private CommandSpec wikiCommandSpec =
+           CommandSpec.builder()
+                   .permission("modwiki.use")
+                   .executor(new WikiCommand())
+                   .arguments(GenericArguments.optional(GenericArguments.string(Text.of("entry"))))
+                   .build();
 
-    private CommandSpec wikiCommandReload = CommandSpec.builder()
-            .permission("modwiki.reload")
-            .executor(this)
-            .build();
+   private CommandSpec wikiReloadCommandSpec =
+           CommandSpec.builder()
+                   .permission("modwiki.reload")
+                   .executor(this)
+                   .build();
 
-    public static Text defaultBreakLine = getBreakLine("Wiki");
+   private CommandSpec wikiShareCommandSpec =
+           CommandSpec.builder()
+                   .permission("modwiki.share")
+                   .executor(new WikiShareCommand())
+                   .arguments(GenericArguments.string(Text.of("entry")), GenericArguments.player(Text.of("pl")))
+                   .build();
 
-    public static Text getBreakLine(String tag) {
-        return Text.of(
-                TextColors.DARK_AQUA, TextStyles.STRIKETHROUGH, "============",
-                TextStyles.RESET, TextColors.AQUA, String.format(" %s ", tag),
-                TextColors.DARK_AQUA, TextStyles.STRIKETHROUGH, "============");
-    }
+   public static Text defaultBreakLine = getBreakLine("Wiki");
 
-    @Listener
-    public void onServerStart(GameStartedServerEvent event) {
-        if (this.init()) {
-            Sponge.getCommandManager().register(this, wikiCommandSpec, "wiki");
-            Sponge.getCommandManager().register(this, wikiCommandReload, "wikireload");
-        }
-    }
+   public static Text getBreakLine ( String tag ) {
+      return Text.of(
+              TextColors.DARK_AQUA, TextStyles.STRIKETHROUGH, "============",
+              TextStyles.RESET, TextColors.AQUA, String.format(" %s ", tag),
+              TextColors.DARK_AQUA, TextStyles.STRIKETHROUGH, "============");
+   }
 
-    public boolean init() {
-        File configurationFile = new File(this.root.toFile(), "wiki.conf");
-        if (!configurationFile.exists()) {
-            try {
-                configurationFile.getParentFile().mkdirs();
-                configurationFile.createNewFile();
-            } catch (IOException e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
+   @Listener
+   public void onServerStart ( GameStartedServerEvent event ) {
+      if (this.init()) {
+         Sponge.getCommandManager().register(this, wikiCommandSpec, "wiki");
+         Sponge.getCommandManager().register(this, wikiReloadCommandSpec, "wikireload");
+         Sponge.getCommandManager().register(this, wikiShareCommandSpec, "wikishare");
+      }
+   }
 
-        try {
-            JsonReader reader = new JsonReader(new FileReader(configurationFile));
-            Modularwiki.wikiObjects = new Gson().fromJson(reader, WikiObject[].class);
-            return true;
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-            System.out.println("Could not read configuration file, ModularWiki command will not be registered");
+   public boolean init () {
+      File configurationFile = new File(this.root.toFile(), "wiki.conf");
+      if (!configurationFile.exists()) {
+         try {
+            configurationFile.getParentFile().mkdirs();
+            if (!configurationFile.createNewFile())
+               throw new IOException("Failed to create configuration file, do I have permission?");
+         } catch (IOException e) {
+            this.logger.error(e.getMessage());
             return false;
-        }
-    }
+         }
+      }
 
-    @Override
-    public CommandResult execute(CommandSource src, CommandContext args) throws CommandException {
-        src.sendMessage(Text.of(TextColors.GRAY, "[] ", TextColors.AQUA, (this.init() ? "Successfully reloaded wiki" : "Failed to reload wiki, see console for more information")));
-        return CommandResult.success();
-    }
 
-    public static class WikiCommand implements CommandExecutor {
+      try (JsonReader reader = new JsonReader(new FileReader(configurationFile))) {
+         Modularwiki.wikiObjects = new Gson().fromJson(reader, WikiObject[].class);
+         return true;
+      } catch (IOException e) {
+         this.logger.error(e.getMessage());
+         this.logger.warn("Could not read configuration file, ModularWiki command will not be registered");
+         return false;
+      }
+   }
 
-        @Override
-        public CommandResult execute(CommandSource src, CommandContext args) throws CommandException {
-            Optional<String> optionalEntry = args.getOne("entry");
-            if (src instanceof Player) {
-                Player pl = (Player) src;
+   private static void tellPlayer ( String message, CommandSource pl ) {
+      pl.sendMessage(Text.of(TextColors.GRAY, "[] ", TextColors.AQUA, message));
+   }
 
-                if (Modularwiki.wikiObjects != null) {
-                    if (optionalEntry.isPresent()) {
-                        // Specific entry
-                        Optional<WikiObject> optionalWikiObject = Arrays.stream(Modularwiki.wikiObjects)
-                                .filter(wikiObject -> wikiObject.id.equals(optionalEntry.get()))
-                                .findFirst();
-                        if (optionalWikiObject.isPresent()) {
-                            WikiObject wikiObject = optionalWikiObject.get();
-                            if (wikiObject.permission == null || pl.hasPermission(wikiObject.permission)) {
-                                Text.Builder multiLineDescriptionBuilder = Text.builder();
-                                Arrays.asList(wikiObject.description).forEach(line -> multiLineDescriptionBuilder.append(Text.of("\n", TextColors.WHITE, line)));
-                                pl.sendMessage(Text.of(Modularwiki.getBreakLine(wikiObject.name), multiLineDescriptionBuilder.build(), "\n", Modularwiki.getBreakLine(wikiObject.name)));
-                            } else {
-                                pl.sendMessage(Text.of(TextColors.GRAY, "[] ", TextColors.AQUA, String.format("You do not have permission to view this wiki '%s'", wikiObject.permission)));
-                            }
-                        } else {
-                            pl.sendMessage(Text.of(TextColors.GRAY, "[] ", TextColors.AQUA, String.format("No wiki entries were found for requested value '%s'", optionalEntry.get())));
-                        }
-                    } else {
-                        // List all entries
-                        Text.Builder multiLineEntryBuilder = Text.builder();
+   @Override
+   public CommandResult execute ( CommandSource src, CommandContext args ) throws CommandException {
+      Modularwiki.tellPlayer((this.init() ? "Successfully reloaded wiki" : "Failed to reload wiki, see console for more information"), src);
+      return CommandResult.success();
+   }
 
-                        Arrays.asList(Modularwiki.wikiObjects).forEach(wikiObject -> {
-                            if (wikiObject.permission == null || pl.hasPermission(wikiObject.permission)) {
-                                Text singleEntryText = Text.builder()
-                                        .append(Text.of(TextColors.GRAY, "\n - ", TextColors.AQUA, wikiObject.name, TextColors.DARK_AQUA, " [View]"))
-                                        .onClick(TextActions.runCommand("/modularwiki:wiki " + wikiObject.id))
-                                        .onHover(TextActions.showText(Text.of(TextColors.AQUA, "More information about ", wikiObject.name)))
-                                        .build();
-                                multiLineEntryBuilder.append(singleEntryText);
-                            }
+   public static class WikiCommand implements CommandExecutor {
+
+      @Override
+      public CommandResult execute ( CommandSource src, CommandContext args ) throws CommandException {
+         Optional<String> optionalEntry = args.getOne("entry");
+         if (src instanceof Player) {
+            Player pl = (Player) src;
+
+            if (Modularwiki.wikiObjects != null) {
+               if (optionalEntry.isPresent()) {
+                  // Specific entry
+                  Optional<WikiObject> optionalWikiObject = Arrays.stream(Modularwiki.wikiObjects)
+                                                                    .filter(wikiObject -> wikiObject.id.equals(optionalEntry.get()))
+                                                                    .findFirst();
+                  if (optionalWikiObject.isPresent()) {
+                     WikiObject wikiObject = optionalWikiObject.get();
+                     if (wikiObject.permission == null || pl.hasPermission(wikiObject.permission)) {
+                        Text.Builder multiLineDescriptionBuilder = Text.builder();
+                        Arrays.asList(wikiObject.description).forEach(line -> {
+                           String[] partialLines = line.split("\\|");
+                           if (partialLines.length == 2) {
+                              Text.Builder singleLineBuilder = Text.builder();
+                              singleLineBuilder
+                                      .append(Text.of("\n", TextColors.WHITE, partialLines[1]))
+                                      .onHover(TextActions.showText(Text.of(TextColors.AQUA, String.format("Open entry '%s'", partialLines[0]))))
+                                      .onClick(TextActions.runCommand(String.format("/modularwiki:wiki %s", partialLines[0])));
+
+                              multiLineDescriptionBuilder.append(singleLineBuilder.build());
+                           } else multiLineDescriptionBuilder.append(Text.of("\n", TextColors.WHITE, line));
                         });
-                        pl.sendMessage(Text.of(Modularwiki.defaultBreakLine, multiLineEntryBuilder.build(), "\n", Modularwiki.defaultBreakLine));
-                    }
-                } else {
-                    pl.sendMessage(Text.of(TextColors.GRAY, "[] ", TextColors.AQUA, "No wiki entries were found"));
-                }
+                        Text shareButton = Text.builder()
+                                                   .append(Text.of("\n\n", TextColors.DARK_AQUA, "[", TextColors.AQUA, "Share '" + wikiObject.name + "'"))
+                                                   .onHover(TextActions.showText(Text.of(TextColors.AQUA, "Share entry with another player")))
+                                                   .onClick(TextActions.suggestCommand(String.format("/modularwiki:wikishare %s", wikiObject.id)))
+                                                   .build();
+                        pl.sendMessage(Text.of(Modularwiki.getBreakLine(wikiObject.name), multiLineDescriptionBuilder.build(), "\n", Modularwiki.getBreakLine(wikiObject.name), shareButton));
+                     } else {
+                        Modularwiki.tellPlayer(String.format("You do not have permission to view this wiki '%s'", wikiObject.permission), pl);
+                     }
+                  } else {
+                     Modularwiki.tellPlayer(String.format("No wiki entries were found for requested value '%s'", optionalEntry.get()), pl);
+                  }
+
+               } else {
+                  // List all entries
+                  Text.Builder multiLineEntryBuilder = Text.builder();
+
+                  Arrays.asList(Modularwiki.wikiObjects).forEach(wikiObject -> {
+                     if (wikiObject.permission == null || pl.hasPermission(wikiObject.permission) && !wikiObject.hide) {
+                        Text singleEntryText = Text.builder()
+                                                       .append(Text.of(TextColors.GRAY, "\n - ", TextColors.AQUA, wikiObject.name, TextColors.DARK_AQUA, " [View]"))
+                                                       .onClick(TextActions.runCommand("/modularwiki:wiki " + wikiObject.id))
+                                                       .onHover(TextActions.showText(Text.of(TextColors.AQUA, "More information about ", wikiObject.name)))
+                                                       .build();
+                        multiLineEntryBuilder.append(singleEntryText);
+                     }
+                  });
+                  pl.sendMessage(Text.of(Modularwiki.defaultBreakLine, multiLineEntryBuilder.build(), "\n", Modularwiki.defaultBreakLine));
+               }
+            } else {
+               Modularwiki.tellPlayer("No wiki entries were found", pl);
             }
-            return CommandResult.success();
-        }
-    }
+         }
+         return CommandResult.success();
+      }
+   }
 
-    public static class WikiObject {
+   public static class WikiObject {
 
-        private String id;
-        private String name;
-        private String permission;
-        private String[] description;
+      private String id;
+      private String name;
+      private String permission;
+      private String[] description;
+      private boolean hide = false;
 
-        public WikiObject(String id, String name, String permission, String[] description) {
-            this.id = id;
-            this.name = name;
-            this.permission = permission;
-            this.description = description;
-        }
-    }
+      public WikiObject ( String id, String name, String permission, String[] description, boolean hide ) {
+         this.id = id;
+         this.name = name;
+         this.permission = permission;
+         this.description = description;
+         this.hide = hide;
+      }
+   }
+
+   public static class WikiShareCommand implements CommandExecutor {
+
+      @Override
+      public CommandResult execute ( CommandSource src, CommandContext args ) throws CommandException {
+         String entry = (String) args.getOne("entry").orElse(null);
+         Player player = (Player) args.getOne("pl").orElse(null);
+         if (entry != null && player != null) {
+            WikiObject wikiObject = Arrays.stream(Modularwiki.wikiObjects).filter(wikiObj -> wikiObj.id.equals(entry)).findFirst().orElse(null);
+            if (wikiObject != null) {
+               Text shareMessage = Text.of(TextColors.GRAY, "[] ", TextColors.DARK_AQUA, src.getName(), TextColors.AQUA, String.format(" shared the '%s' wiki with you ", entry));
+               Text viewButton = Text.builder()
+                                         .append(Text.of(TextColors.DARK_AQUA, "[", TextColors.AQUA, "View", TextColors.DARK_AQUA, "]"))
+                                         .onHover(TextActions.showText(Text.of(TextColors.AQUA, String.format("View entry '%s'", entry))))
+                                         .onClick(TextActions.runCommand(String.format("/modularwiki:wiki %s", entry))).build();
+
+               player.sendMessage(Text.of(shareMessage, viewButton));
+            } else
+               Modularwiki.tellPlayer(String.format("No wiki entries were found for requested value '%s'", entry), src);
+         } else Modularwiki.tellPlayer("Could not share entry", src);
+         return CommandResult.success();
+      }
+
+   }
 }
