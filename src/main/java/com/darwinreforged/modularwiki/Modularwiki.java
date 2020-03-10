@@ -150,11 +150,11 @@ public class Modularwiki implements CommandExecutor {
                            } else multiLineDescriptionBuilder.append(Text.of("\n", TextColors.WHITE, line));
                         });
                         Text shareButton = Text.builder()
-                                                   .append(Text.of("\n\n", TextColors.DARK_AQUA, "[", TextColors.AQUA, "Share '" + wikiObject.name + "'"))
-                                                   .onHover(TextActions.showText(Text.of(TextColors.AQUA, "Share entry with another player")))
+                                                   .append(Text.of("\n", TextColors.DARK_AQUA, "[", TextColors.AQUA, String.format("Share '%s'", wikiObject.name), TextColors.DARK_AQUA, "]"))
+                                                   .onHover(TextActions.showText(Text.of(TextColors.AQUA, "Share wiki with another player")))
                                                    .onClick(TextActions.suggestCommand(String.format("/modularwiki:wikishare %s", wikiObject.id)))
                                                    .build();
-                        pl.sendMessage(Text.of(Modularwiki.getBreakLine(wikiObject.name), multiLineDescriptionBuilder.build(), "\n", Modularwiki.getBreakLine(wikiObject.name), shareButton));
+                        pl.sendMessage(Text.of(Modularwiki.getBreakLine(wikiObject.name), multiLineDescriptionBuilder.build(), "\n", shareButton, Modularwiki.getBreakLine(wikiObject.name)));
                      } else {
                         Modularwiki.tellPlayer(String.format("You do not have permission to view this wiki '%s'", wikiObject.permission), pl);
                      }
@@ -212,7 +212,7 @@ public class Modularwiki implements CommandExecutor {
          if (entry != null && player != null) {
             WikiObject wikiObject = Arrays.stream(Modularwiki.wikiObjects).filter(wikiObj -> wikiObj.id.equals(entry)).findFirst().orElse(null);
             if (wikiObject != null) {
-               Text shareMessage = Text.of(TextColors.GRAY, "[] ", TextColors.DARK_AQUA, src.getName(), TextColors.AQUA, String.format(" shared the '%s' wiki with you ", entry));
+               Text shareMessage = Text.of(TextColors.GRAY, "[] ", TextColors.DARK_AQUA, src.getName(), TextColors.AQUA, String.format(" shared the '%s' wiki with you ", wikiObject.name));
                Text viewButton = Text.builder()
                                          .append(Text.of(TextColors.DARK_AQUA, "[", TextColors.AQUA, "View", TextColors.DARK_AQUA, "]"))
                                          .onHover(TextActions.showText(Text.of(TextColors.AQUA, String.format("View entry '%s'", entry))))
