@@ -43,7 +43,7 @@ import java.util.Optional;
         authors = {
                 "DiggyNevs"
         },
-        version = "1.0.6"
+        version = "1.0.7"
 )
 public class Modularwiki implements CommandExecutor {
 
@@ -228,7 +228,7 @@ public class Modularwiki implements CommandExecutor {
                         Text shareButton = Text.EMPTY;
                         if (wikiObject.share) {
                            shareButton = Text.builder()
-                                   .append(Text.of("\n", parse(wikiConfig.getSecondaryColor()), "[", parse(wikiConfig.getPrimaryColor()), String.format("Share '%s'%n", wikiObject.name), parse(wikiConfig.getSecondaryColor()), "]"))
+                                   .append(Text.of("\n", parse(wikiConfig.getSecondaryColor() + "["), parse(wikiConfig.getPrimaryColor() + String.format("Share '%s'", wikiObject.name)), parse(wikiConfig.getSecondaryColor() + "]"), Text.NEW_LINE))
                                    .onHover(TextActions.showText(Text.of(parse(wikiConfig.getPrimaryColor()), "Share wiki with another player")))
                                    .onClick(TextActions.suggestCommand(String.format("/modwiki:wikishare %s", wikiObject.id)))
                                    .build();
